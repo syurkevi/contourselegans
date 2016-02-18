@@ -58,7 +58,7 @@ def read_video_JSON(filename):
     meta.foi = obj['foi']
     return meta
 
-def nothing():
+def nothing(x):
     pass
 
 class Error(Exception):
@@ -74,41 +74,42 @@ class FileError(Error):
 class UI:
     maxFrames = 0
     window_name = 'Contours. Elegans tracker'
-    switch_loop = '0:Don\'t loop segments\n1:Loop segments'
-    switch_play = '0:Don\'t Play\n1:Play'
+    switch_loop = 'Loop seg'
+    switch_play = 'Play'
     frame = 0;
     tb_frame = 0;
     loop_seg = 0;
     play = 0;
+    cap = None
 
     def __init__(self, cap):
         cv2.namedWindow(self.window_name)
-        maxFrames = int(cap.get(7))
+        UI.maxFrames = int(cap.get(7))
 
         #trackbars
         def updateTrackbar(x):
             cap.set(1,x)
-        cv2.createTrackbar('Seek Frame', UI.window_name, 0, maxFrames, updateTrackbar)
+            UI.frame = x
+        cv2.createTrackbar('Seek Frame', UI.window_name, 0, UI.maxFrames-1, updateTrackbar)
         #switches
         cv2.createTrackbar(UI.switch_loop, UI.window_name, 0, 1, nothing)
         cv2.createTrackbar(UI.switch_play, UI.window_name, 0, 1, nothing)
-        self.cap = cap
+        UI.cap = cap
 
-    def update(self):
-        play     = cv2.getTrackbarPos('Play', 'Contours. Elegans tracker')
-        tbFrame  = cv2.getTrackbarPos('Seek Frame', 'Contours. Elegans tracker')
-        loop_seg = cv2.getTrackbarPos('Loop seg', 'Contours. Elegans tracker')
+    def update(self, cap):
+        UI.play     = cv2.getTrackbarPos('Play', 'Contours. Elegans tracker')
+        UI.tbFrame  = cv2.getTrackbarPos('Seek Frame', 'Contours. Elegans tracker')
+        UI.loop_seg = cv2.getTrackbarPos('Loop seg', 'Contours. Elegans tracker')
 
-        print self.cap.get(1)
-        if UI.frame > UI.maxFrames-1:
+        UI.frame = int(UI.cap.get(1))
+        if UI.frame > UI.maxFrames-3:
             UI.frame = 0
-        else:
-            UI.frame = int(self.cap.get(1) + 1)
-            print UI.frame
-        if abs(tbFrame-UI.frame) > 2:
-            UI.frame = tbFrame
-        self.cap.set(1, UI.frame)
-
+            tbFrame = 0
+        if UI.play == 0:
+            UI.frame -= 1
+            UI.cap.set(1, UI.frame)
+        tbFrame = UI.frame
+        cv2.setTrackbarPos('Seek Frame', 'Contours. Elegans tracker', UI.frame)
 
 
 def main():
@@ -145,12 +146,19 @@ def main():
     while(cap.isOpened()):
         ret, frame = cap.read()
 
-        ui.update()
+        ui.update(cap)
         cv2.imshow('Contours. Elegans tracker', frame)
 
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        c = cv2.waitKey(1)
+        if c & 0xFF == ord('q'):
             break
+        if c & 0xFF == ord(' '):
+            ui.play = not ui.play
+            cv2.setTrackbarPos('Play', 'Contours. Elegans tracker', ui.play)
+        if c == 2424832:
+            cap.set(1, ui.frame-1)
+        if c == 2555904:
+            cap.set(1, ui.frame+1)
     cap.release()
     cv2.destroyAllWindows()
 
