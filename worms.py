@@ -152,22 +152,20 @@ def main():
             for cn in range(len(UI.raw_contours_ref[ui.frame_key()])):
                 cnt = UI.raw_contours_ref[ui.frame_key()][cn]
                 frame = cv2.drawContours(frame, [cnt], 0, (0, 155, (30 * cn) % 255), 3)
-        #draw ventral curve
-        if ui.frame_key() in vid_meta.foi:
-            cnt = np.asarray(vid_meta.foi[ui.frame_key()].ventral_curve)
-            for i in range(len(cnt)-2):
-                cv2.line(frame, (cnt[i][0],cnt[i][1]), (cnt[i+1][0],cnt[i+1][1]), (0,255,0), 3)
-        #draw dorsal curve
-        if ui.frame_key() in vid_meta.foi:
-            cnt = np.asarray(vid_meta.foi[ui.frame_key()].dorsal_curve)
-            for i in range(len(cnt)-2):
-                cv2.line(frame, (cnt[i][0],cnt[i][1]), (cnt[i+1][0],cnt[i+1][1]), (0,0,255), 3)
+
+        frame = vid_meta.drawVentral(frame, ui.frame_key())
+        frame = vid_meta.drawDorsal(frame, ui.frame_key())
+
         #draw head tail
         if ui.frame_key() in vid_meta.foi:
             cv2.circle(frame, tuple(vid_meta.foi[ui.frame_key()].head_pos), 5, (200, 100, 0),3)
             cv2.circle(frame, tuple(vid_meta.foi[ui.frame_key()].tail_pos), 3, (100, 50, 0),3)
 
-        cv2.imshow('Contours. Elegans tracker', frame)
+        if frame.shape[1] > ui.maxWidth:
+            ui.scaleFactor = float(ui.maxWidth) / float(frame.shape[0])
+            scaled_frame = cv2.resize(frame, (0,0), fx=ui.scaleFactor, fy=ui.scaleFactor)
+
+        cv2.imshow('Contours. Elegans tracker', scaled_frame)
 
         c = cv2.waitKey(1)
         if c & 0xFF == ord('q') or c & 0xFF == 27:

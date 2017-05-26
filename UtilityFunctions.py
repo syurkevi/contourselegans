@@ -47,6 +47,7 @@ def nearest_contour(test_point, contours):
             min_contour = cnt
             min_dist_contour = c_mindist
     return min_contour
+
 def closest_point_idx(target_point, contour):
     min_dist = 10000000
     min_point_id = 0
@@ -55,13 +56,16 @@ def closest_point_idx(target_point, contour):
             min_dist = distance(target_point, contour[pt][0])
             min_point_id = pt
     return min_point_id
+
 def cv_cont_to_jlist(ncont):
     return [x[0] for x in ncont.tolist()]
+
 def contour_length(cnt):
     ln = 0;
     for i in range(len(cnt)-2):
         ln += distance((cnt[i][0], cnt[i][1]), (cnt[i+1][0], cnt[i+1][1]))
     return ln
+
 def curvature(p1, p2, p3):
     A = np.array(p1)
     B = np.array(p2)

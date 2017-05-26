@@ -30,6 +30,22 @@ class VideoMeta(object):
         return json.dumps(self, 
                          sort_keys=True, indent=4)
 
+    def drawDorsal(self, image, frame_number, scale=1.0):
+        if frame_number in self.foi:
+            cnt = np.asarray(self.foi[frame_number].dorsal_curve)
+            self.drawContour(image, cnt, (0, 0, 255), scale)
+        return image
+
+    def drawVentral(self, image, frame_number, scale=1.0):
+        if frame_number in self.foi:
+            cnt = np.asarray(self.foi[frame_number].ventral_curve)
+            self.drawContour(image, cnt, (0, 255, 0), scale)
+        return image
+
+    def drawContour(self, image, contour, color, scale):
+        for i in range(len(contour)-2):
+            cv2.line(image, (contour[i][0],contour[i][1]), (contour[i+1][0], contour[i+1][1]), color, 3)
+        return image
 
 class FrameDetail(object):
     def __init__(self, fnum, frame):
@@ -76,6 +92,8 @@ class UI(object):
     raw_contours_ref = {}
     active_seq = (0, 0)
     tmpMarker = Set([])
+    scaleFactor = 0.6
+    maxWidth = 600
 
     def __init__(self, cap, vmeta):
         cv2.namedWindow(self.window_name)
@@ -194,6 +212,8 @@ class UI(object):
                 UI.raw_contours_ref[self.frame_key()].append(cnt_2)
 
     def mouseInput(self, event, x, y, flags, param):
+        x = int(x/self.scaleFactor)
+        y = int(y/self.scaleFactor)
         if event == cv2.EVENT_LBUTTONUP:
             if UI.mouse_state == UIState.CHOOSE_DORSAL:
                 if self.frame_key() in UI.raw_contours_ref:
@@ -256,7 +276,7 @@ class UI(object):
             ax2.plot(ventral_len, 'g')
 
 
-            print dlocal_curvatures.tolist() 
+            print dlocal_curvatures.tolist()
             ax3 = f3.add_subplot(111)
             ax3.plot(dlocal_curvatures.tolist(), 'r')
             ax3.plot(vlocal_curvatures.tolist(), 'g')
