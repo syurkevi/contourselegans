@@ -55,6 +55,7 @@ def read_video_JSON(filename):
     print "loading json " + filename
     return json.load(json_file, cls_lookup_map=globals())
 
+
 def main():
     vid_meta = VideoMeta()
     if options.tutorial:
@@ -123,6 +124,7 @@ def main():
 
     while(cap.isOpened()):
         ret, frame = cap.read()
+        raw_frame = frame.copy()
 
         ui.update(cap, vid_meta)
         cn = ui.predictActiveSeg(frame, vid_meta)
@@ -167,13 +169,15 @@ def main():
 
         cv2.imshow('Contours. Elegans tracker', scaled_frame)
 
-        c = cv2.waitKey(1)
+        c = cv2.waitKeyEx(1)
         if c & 0xFF == ord('q') or c & 0xFF == 27:
             break
 
         ui.keyInput(c, frame)
         cv2.setMouseCallback('Contours. Elegans tracker', ui.mouseInput)
         ui.displayPlot(vid_meta)
+        base_path = vpath +  "/"
+        ui.frameDump(base_path, vid_meta, raw_frame, frame)
 
     cap.release()
     cv2.destroyAllWindows()

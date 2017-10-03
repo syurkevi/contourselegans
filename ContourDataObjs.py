@@ -6,6 +6,7 @@ import cv2
 from os import path
 import math
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from UtilityFunctions import *
 
 class UIState(object):
@@ -69,7 +70,7 @@ class FrameDetail(object):
         gframe = cv2.GaussianBlur(gframe, (5,5), 0)
         gframe = cv2.bilateralFilter(gframe,9,75,75)
         frame = gframe
-        ret, thresh = cv2.threshold(gframe, 127, 255, 0)
+        ret, thresh = cv2.threshold(gframe, UI.lthreshold, UI.uthreshold, 0)
         #ret, thresh = cv2.threshold(gframe, 50, 255, 0)
         image, contours, hierarchy = cv2.findContours(thresh,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
         UI.raw_contours_ref[str(UI.frame)] = contours
@@ -81,6 +82,7 @@ class UI(object):
     window_name = 'Contours. Elegans tracker'
     switch_loop = 'Loop seg'
     switch_play = 'Play'
+    output_frame= False
     show_plot = False
     frame = 0;
     tb_frame = 0;
@@ -94,6 +96,8 @@ class UI(object):
     tmpMarker = Set([])
     scaleFactor = 0.6
     maxWidth = 600
+    lthreshold = 100
+    uthreshold = 200
 
     def __init__(self, cap, vmeta):
         cv2.namedWindow(self.window_name)
@@ -105,17 +109,21 @@ class UI(object):
             UI.frame = x
         cv2.createTrackbar('Seek Frame', UI.window_name, 0, UI.maxFrames-1, updateTrackbar)
         #switches
-        cv2.createTrackbar(UI.switch_loop, UI.window_name, 0, 1, nothing)
-        cv2.createTrackbar(UI.switch_play, UI.window_name, 0, 1, nothing)
+        #cv2.createTrackbar(UI.switch_loop, UI.window_name, 0, 1, nothing)
+        #cv2.createTrackbar(UI.switch_play, UI.window_name, 0, 1, nothing)
+        cv2.createTrackbar('LowerThreshold', UI.window_name, 0, 255, nothing)
+        cv2.createTrackbar('UpperThreshold', UI.window_name, 0, 255, nothing)
         UI.cap_ref = cap
         UI.vid_metadata_ref = vmeta
     def frame_key(self):
         return str(UI.frame)
 
     def update(self, cap, vidmeta):
-        UI.play     = cv2.getTrackbarPos('Play', 'Contours. Elegans tracker')
+        #UI.play     = cv2.getTrackbarPos('Play', 'Contours. Elegans tracker')
         UI.tbFrame  = cv2.getTrackbarPos('Seek Frame', 'Contours. Elegans tracker')
-        UI.loop_seg = cv2.getTrackbarPos('Loop seg', 'Contours. Elegans tracker')
+        #UI.loop_seg = cv2.getTrackbarPos('Loop seg', 'Contours. Elegans tracker')
+        UI.lthreshold = cv2.getTrackbarPos('LowerThreshold', UI.window_name)
+        UI.uthreshold = cv2.getTrackbarPos('UpperThreshold', UI.window_name)
 
         UI.frame = int(UI.cap_ref.get(1))
         if UI.frame > UI.maxFrames-3:
@@ -171,8 +179,10 @@ class UI(object):
             cv2.setTrackbarPos('Play', 'Contours. Elegans tracker', UI.play)
         if c == 2424832:
             UI.cap_ref.set(1, UI.frame-1)
+            UI.frame = UI.frame-1
         if c == 2555904:
             UI.cap_ref.set(1, UI.frame+1)
+            UI.frame = UI.frame+1
         if c == ord('m'):
             UI.tmpMarker.add(UI.frame)
         if c == ord('c'):
@@ -191,6 +201,8 @@ class UI(object):
             UI.mouse_state = UIState.PLACE_TAIL
         if c == ord('p'):
             UI.show_plot = True
+        if c == ord('o'):
+            UI.output_frame = True
         if c == ord('s'):
             if self.frame_key() in UI.raw_contours_ref:
 #MAKE THIS A FUNCTION. WTF DOES IT DO?
@@ -237,6 +249,60 @@ class UI(object):
                     UI.vid_metadata_ref.foi[self.frame_key()].tail_pos = (x,y)
                     print "Placing tail at: " + str((x,y))
                 UI.mouse_state = UIState.NONE
+
+    def frameDump(self, base_path, vmeta, raw_img, processed_img):
+        if UI.output_frame:
+            curr_frame = self.frame_key()
+            path = base_path + "frame" + curr_frame
+            #if (curr_frame in vmeta.foi and vmeta.foi[curr_frame].dorsal_length != 0):
+            if (curr_frame in vmeta.foi):
+                frame = vmeta.foi[curr_frame]
+                cv2.imwrite(path + "raw.jpg", raw_img)
+
+                frame.dorsal_length
+                frame.ventral_length
+
+                np.savetxt(path + 'dlen.txt', np.array([frame.dorsal_length]), header="dorsal_length")
+                np.savetxt(path + 'vlen.txt', np.array([frame.ventral_length]), header="ventral_length")
+                np.savetxt(path + 'dcurve.txt', np.array(frame.dorsal_curve))
+                np.savetxt(path + 'vcurve.txt', np.array(frame.ventral_curve))
+
+                frame.dorsal_curvatures
+                frame.ventral_curvatures
+                average_dorsal_curvatures = np.average(frame.dorsal_curvatures)
+                average_ventral_curvatures = np.average(frame.ventral_curvatures)
+
+                text = "dorsal length(px): " + str(frame.dorsal_length) +\
+                        ", ventral length(px): " + str(frame.ventral_length)
+                text_dv = "D/V ratio: " + str(frame.dorsal_length/frame.ventral_length)
+                text_av_curv = "average dorsal curvature: " + str(average_dorsal_curvatures) +\
+                        ", average ventral curvature: " + str(average_ventral_curvatures)
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                cv2.putText(processed_img, text,(50,100), font, 1,(255,255,255), 2,cv2.LINE_AA)
+                cv2.putText(processed_img, text_dv,(50,150), font, 1,(255,255,255), 2,cv2.LINE_AA)
+                cv2.putText(processed_img, text_av_curv,(50,200), font, 1,(255,255,255), 2,cv2.LINE_AA)
+                cv2.imwrite(path + "processed.jpg", processed_img)
+
+                average_dorsal_curvatures = np.full(len(frame.dorsal_curvatures), average_dorsal_curvatures)
+                average_ventral_curvatures = np.full(len(frame.ventral_curvatures), average_ventral_curvatures)
+
+                f1 = plt.figure()
+                ax1 = f1.add_subplot(111)
+                ax1.plot(frame.dorsal_curvatures, 'r')
+                ax1.plot(average_dorsal_curvatures, 'r')
+                ax1.plot(frame.ventral_curvatures, 'g')
+                ax1.plot(average_ventral_curvatures, 'g')
+
+                red_patch = mpatches.Patch(color='red', label='Dorsal')
+                green_patch = mpatches.Patch(color='green', label='Ventral')
+                plt.legend(handles=[red_patch, green_patch])
+                plt.ylabel("Curvature")
+                plt.xlabel("Sample point (head to tail)")
+
+                plt.savefig(path + "_curvatures.png", bbox_inches='tight')
+
+
+        UI.output_frame = False
 
     def displayPlot(self,  vmeta):
         if UI.show_plot:
