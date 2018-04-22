@@ -6,7 +6,7 @@ from os import path
 import math
 import matplotlib.pyplot as plt
 from ContourDataObjs import  UIState, VideoMeta, FrameDetail, UI
-import json_tricks.np as json
+import json_tricks as json
 from UtilityFunctions import *
 from optparse import OptionParser
 
@@ -55,6 +55,16 @@ def read_video_JSON(filename):
     print "loading json " + filename
     return json.load(json_file, cls_lookup_map=globals())
 
+def handleRecalcInput(c, fk, vmeta, frame):
+#recalculate hack
+    if c & 0xFF == ord('r'):
+        print('recalculating')
+        if fk in vmeta.foi:
+            vmeta.foi[fk].metrics_calc = False
+        else:
+            print('adding to foi')
+            frame_data = FrameDetail(UI.frame, frame)
+            vmeta.foi[fk] = frame_data
 
 def main():
     vid_meta = VideoMeta()
@@ -122,6 +132,9 @@ def main():
 
     ui = UI(cap, vid_meta);
 
+    def mouseHandler(event, x, y, flags, param):
+        ui.mouseInput(event, x, y, flags, param)
+
     while(cap.isOpened()):
         ret, frame = cap.read()
         raw_frame = frame.copy()
@@ -129,43 +142,54 @@ def main():
         ui.update(cap, vid_meta)
         cn = ui.predictActiveSeg(frame, vid_meta)
 
-       ##update calculations
+        #update calculations
         if ui.frame_key() in vid_meta.foi:
             if(vid_meta.foi[ui.frame_key()].head_pos != (0,0) and
-               vid_meta.foi[ui.frame_key()].tail_pos != (0,0) and
-               vid_meta.foi[ui.frame_key()].ventral_curve     and
-               vid_meta.foi[ui.frame_key()].dorsal_curve      and
-               not vid_meta.foi[ui.frame_key()].metrics_calc):
+                vid_meta.foi[ui.frame_key()].tail_pos != (0,0) and
+                vid_meta.foi[ui.frame_key()].ventral_curve     and
+                vid_meta.foi[ui.frame_key()].dorsal_curve      and
+                not vid_meta.foi[ui.frame_key()].metrics_calc):
                 #set curve lengths
+                ##ventral
                 cnt = np.asarray(vid_meta.foi[ui.frame_key()].ventral_curve)
+
+                cnt = cnt[::2, :] #every second point in contour
+
                 vid_meta.foi[ui.frame_key()].ventral_length = contour_length(cnt);
                 av_curvature, curvatures = local_curvature(cnt);
                 vid_meta.foi[ui.frame_key()].ventral_curvatures = curvatures
                 vid_meta.foi[ui.frame_key()].average_ventral_curvature = av_curvature
+
+                ##dorsal
                 cnt = np.asarray(vid_meta.foi[ui.frame_key()].dorsal_curve)
+
+                cnt = cnt[::2, :] #every second point in contour
+
                 vid_meta.foi[ui.frame_key()].dorsal_length = contour_length(cnt);
                 av_curvature, curvatures = local_curvature(cnt);
                 vid_meta.foi[ui.frame_key()].dorsal_curvatures = curvatures
                 vid_meta.foi[ui.frame_key()].average_dorsal_curvature = av_curvature
+                #done calculating
                 vid_meta.foi[ui.frame_key()].metrics_calc = True
 
         #draw contours curve
+        dispframe = frame.copy()
         if ui.frame_key() in UI.raw_contours_ref:
             for cn in range(len(UI.raw_contours_ref[ui.frame_key()])):
                 cnt = UI.raw_contours_ref[ui.frame_key()][cn]
-                frame = cv2.drawContours(frame, [cnt], 0, (0, 155, (30 * cn) % 255), 3)
+                dispframe = cv2.drawContours(dispframe, [cnt], 0, (0, 155, (30 * cn) % 255), 3)
 
-        frame = vid_meta.drawVentral(frame, ui.frame_key())
-        frame = vid_meta.drawDorsal(frame, ui.frame_key())
+        dispframe = vid_meta.drawVentral(dispframe, ui.frame_key())
+        dispframe = vid_meta.drawDorsal(dispframe, ui.frame_key())
 
         #draw head tail
         if ui.frame_key() in vid_meta.foi:
-            cv2.circle(frame, tuple(vid_meta.foi[ui.frame_key()].head_pos), 5, (200, 100, 0),3)
-            cv2.circle(frame, tuple(vid_meta.foi[ui.frame_key()].tail_pos), 3, (100, 50, 0),3)
+            cv2.circle(dispframe, tuple(vid_meta.foi[ui.frame_key()].head_pos), 5, (200, 100, 0),3)
+            cv2.circle(dispframe, tuple(vid_meta.foi[ui.frame_key()].tail_pos), 3, (100, 50, 0),3)
 
         if frame.shape[1] > ui.maxWidth:
             ui.scaleFactor = float(ui.maxWidth) / float(frame.shape[0])
-            scaled_frame = cv2.resize(frame, (0,0), fx=ui.scaleFactor, fy=ui.scaleFactor)
+            scaled_frame = cv2.resize(dispframe, (0,0), fx=ui.scaleFactor, fy=ui.scaleFactor)
 
         cv2.imshow('Contours. Elegans tracker', scaled_frame)
 
@@ -174,10 +198,11 @@ def main():
             break
 
         ui.keyInput(c, frame)
-        cv2.setMouseCallback('Contours. Elegans tracker', ui.mouseInput)
+        handleRecalcInput(c, ui.frame_key(), vid_meta, frame)
+        cv2.setMouseCallback('Contours. Elegans tracker', mouseHandler)
         ui.displayPlot(vid_meta)
         base_path = vpath +  "/"
-        ui.frameDump(base_path, vid_meta, raw_frame, frame)
+        ui.frameDump(base_path, vid_meta, raw_frame, dispframe)
 
     cap.release()
     cv2.destroyAllWindows()

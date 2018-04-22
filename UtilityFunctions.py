@@ -1,4 +1,4 @@
-import json_tricks.np as json
+import json_tricks as json
 import sys
 import numpy as np
 from sets import Set
@@ -86,6 +86,10 @@ def local_curvature(cnt):
     a = np.array(cnt)
     dx_dt = np.gradient(a[:,0])
     dy_dt = np.gradient(a[:,1])
+
+    mask = np.logical_and(dx_dt != 0, dy_dt != 0)
+    dx_dt = dx_dt[mask]
+    dy_dt = dy_dt[mask]
     velocity = np.array([ [dx_dt[i], dy_dt[i]] for i in range(dx_dt.size) ])
     ds_dt = np.sqrt(dx_dt * dx_dt + dy_dt * dy_dt)
     tangent = np.array([1/ds_dt] * 2).transpose() * velocity

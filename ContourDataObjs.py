@@ -1,4 +1,4 @@
-import json_tricks.np as json
+import json_tricks as json
 import sys
 import numpy as np
 from sets import Set
@@ -8,6 +8,8 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from UtilityFunctions import *
+from skimage.segmentation import active_contour
+
 
 class UIState(object):
     NONE = 0
@@ -48,6 +50,14 @@ class VideoMeta(object):
             cv2.line(image, (contour[i][0],contour[i][1]), (contour[i+1][0], contour[i+1][1]), color, 3)
         return image
 
+def getFFpoint(img):
+    blur = cv2.blur(img,(3,3))
+    blur = cv2.blur(blur,(5,5))
+    blur = cv2.blur(blur,(15,15))
+    blur = cv2.blur(blur,(15,15))
+    minval, maxval, minloc, maxloc = cv2.minMaxLoc(blur)
+    return maxloc
+
 class FrameDetail(object):
     def __init__(self, fnum, frame):
         self.human_modified = False
@@ -67,12 +77,27 @@ class FrameDetail(object):
 
     def calculate(self, frame):
         gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16,16))
+        gframe = clahe.apply(gframe)
+        ff_source = getFFpoint(gframe)
+        #gframe = cv2.equalizeHist(gframe)
+        #cv2.imshow("hist", gframe)
         gframe = cv2.GaussianBlur(gframe, (5,5), 0)
         gframe = cv2.bilateralFilter(gframe,9,75,75)
-        frame = gframe
+
+        #cv2.floodFill(gframe, None, ff_source, 255.0, 2.0, 3.0)
+        #cv2.imshow("ff", gframe)
         ret, thresh = cv2.threshold(gframe, UI.lthreshold, UI.uthreshold, 0)
+        #cv2.imshow('thresh', thresh)
+        #cv2.imshow('threshmult', thresh * gframe)
+
         #ret, thresh = cv2.threshold(gframe, 50, 255, 0)
         image, contours, hierarchy = cv2.findContours(thresh,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+        #for c in range(len(contours)):
+            #contours[c] = cv2.convexHull(contours[c])
+            #approx_contour = cv2.approxPolyDP(ncont, epsilon, True)
+            #epsilon = 0.01*cv2.arcLength(contours[c],True)
+            #contours[c] = cv2.approxPolyDP(contours[c], epsilon, True)
         UI.raw_contours_ref[str(UI.frame)] = contours
         print "calculating"
 
@@ -111,15 +136,16 @@ class UI(object):
         #switches
         #cv2.createTrackbar(UI.switch_loop, UI.window_name, 0, 1, nothing)
         #cv2.createTrackbar(UI.switch_play, UI.window_name, 0, 1, nothing)
-        cv2.createTrackbar('LowerThreshold', UI.window_name, 0, 255, nothing)
-        cv2.createTrackbar('UpperThreshold', UI.window_name, 0, 255, nothing)
+        cv2.createTrackbar('Play', UI.window_name, 0, 1, nothing)
+        cv2.createTrackbar('LowerThreshold', UI.window_name, 50, 255, nothing)
+        cv2.createTrackbar('UpperThreshold', UI.window_name, 150, 255, nothing)
         UI.cap_ref = cap
         UI.vid_metadata_ref = vmeta
     def frame_key(self):
         return str(UI.frame)
 
     def update(self, cap, vidmeta):
-        #UI.play     = cv2.getTrackbarPos('Play', 'Contours. Elegans tracker')
+        UI.play     = cv2.getTrackbarPos('Play', 'Contours. Elegans tracker')
         UI.tbFrame  = cv2.getTrackbarPos('Seek Frame', 'Contours. Elegans tracker')
         #UI.loop_seg = cv2.getTrackbarPos('Loop seg', 'Contours. Elegans tracker')
         UI.lthreshold = cv2.getTrackbarPos('LowerThreshold', UI.window_name)
@@ -183,33 +209,43 @@ class UI(object):
         if c == 2555904:
             UI.cap_ref.set(1, UI.frame+1)
             UI.frame = UI.frame+1
-        if c == ord('m'):
+        if c & 0xFF == ord('m'):
             UI.tmpMarker.add(UI.frame)
-        if c == ord('c'):
+        if c & 0xFF == ord('c'):
             frame_data = FrameDetail(UI.frame, frame)
             UI.vid_metadata_ref.foi[str(UI.frame)] = frame_data
-        if c == ord('l'):
+        if c & 0xFF == ord('l'):
             UI.loop_seg = not UI.loop_seg
             cv2.setTrackbarPos('Loop seg', 'Contours. Elegans tracker', UI.loop_seg)
-        if c == ord('d'):
+        if c & 0xFF == ord('d'):
             UI.mouse_state = UIState.CHOOSE_DORSAL
-        if c == ord('v'):
+        if c & 0xFF == ord('v'):
             UI.mouse_state = UIState.CHOOSE_VENTRAL
-        if c == ord('h'):
+        if c & 0xFF == ord('h'):
             UI.mouse_state = UIState.PLACE_HEAD
-        if c == ord('t'):
+        if c & 0xFF == ord('t'):
             UI.mouse_state = UIState.PLACE_TAIL
-        if c == ord('p'):
+        if c & 0xFF == ord('p'):
             UI.show_plot = True
-        if c == ord('o'):
+        if c & 0xFF == ord('o'):
             UI.output_frame = True
-        if c == ord('s'):
+        if c & 0xFF == ord('s'):
             if self.frame_key() in UI.raw_contours_ref:
 #MAKE THIS A FUNCTION. WTF DOES IT DO?
 #split nearest contour
                 contours = UI.raw_contours_ref[self.frame_key()]
                 ncont = nearest_contour(UI.vid_metadata_ref.foi[self.frame_key()].head_pos, contours)
                 epsilon = 0.05*cv2.arcLength(ncont,True)
+
+                #ncont = cv2.convexHull(ncont)
+                rcont = np.concatenate((np.atleast_2d(ncont[:, :, 0].flatten()).T, np.atleast_2d(ncont[:, :, 1].flatten()).T), axis=1)
+                print(rcont.shape)
+                #snake = active_contour(frame, rcont, alpha=0.015, beta=70, w_line=-1.0, w_edge=1.0, gamma=0.001)
+                snake = active_contour(frame, rcont, alpha=0.005, beta=0.9)
+                for pt in range(len(ncont)):
+                    ncont[pt, :, :] = snake[pt, :]
+
+                #ncont = cv2.convexHull(ncont)
                 #approx_contour = cv2.approxPolyDP(ncont, epsilon, True)
                 h_idx = closest_point_idx(UI.vid_metadata_ref.foi[self.frame_key()].head_pos, ncont)
                 t_idx = closest_point_idx(UI.vid_metadata_ref.foi[self.frame_key()].tail_pos, ncont)
@@ -254,6 +290,7 @@ class UI(object):
         if UI.output_frame:
             curr_frame = self.frame_key()
             path = base_path + "frame" + curr_frame
+            print('outputting: ' + path)
             #if (curr_frame in vmeta.foi and vmeta.foi[curr_frame].dorsal_length != 0):
             if (curr_frame in vmeta.foi):
                 frame = vmeta.foi[curr_frame]
@@ -275,12 +312,13 @@ class UI(object):
                 text = "dorsal length(px): " + str(frame.dorsal_length) +\
                         ", ventral length(px): " + str(frame.ventral_length)
                 text_dv = "D/V ratio: " + str(frame.dorsal_length/frame.ventral_length)
-                text_av_curv = "average dorsal curvature: " + str(average_dorsal_curvatures) +\
-                        ", average ventral curvature: " + str(average_ventral_curvatures)
+                text_av_dcurv = "average dorsal curvature: " + str(average_dorsal_curvatures)
+                text_av_vcurv = "average ventral curvature: " + str(average_ventral_curvatures)
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(processed_img, text,(50,100), font, 1,(255,255,255), 2,cv2.LINE_AA)
-                cv2.putText(processed_img, text_dv,(50,150), font, 1,(255,255,255), 2,cv2.LINE_AA)
-                cv2.putText(processed_img, text_av_curv,(50,200), font, 1,(255,255,255), 2,cv2.LINE_AA)
+                cv2.putText(processed_img, text,(50,100), font, 0.7,(255,255,255), 2,cv2.LINE_AA)
+                cv2.putText(processed_img, text_dv,(50,140), font, 0.7,(255,255,255), 2,cv2.LINE_AA)
+                cv2.putText(processed_img, text_av_dcurv,(50,180), font, 0.7,(255,255,255), 2,cv2.LINE_AA)
+                cv2.putText(processed_img, text_av_vcurv,(50,220), font, 0.7,(255,255,255), 2,cv2.LINE_AA)
                 cv2.imwrite(path + "processed.jpg", processed_img)
 
                 average_dorsal_curvatures = np.full(len(frame.dorsal_curvatures), average_dorsal_curvatures)
